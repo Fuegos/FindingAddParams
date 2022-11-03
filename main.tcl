@@ -1,24 +1,68 @@
-scan 0x8ABC93F8 %x inputValue
+# Input value. Example 0x5FABFF01
+set inputValue 0xD8067FCE
 
-scan 0x0000FF00 %x maskFirstParam 
-set firstParam [format %X [expr {($inputValue & $maskFirstParam) >> 8}]]
-puts "First parameter: $firstParam"
+proc printParamHex {nameParam valueParam} {
+    puts "$nameParam parameter: [format %X $valueParam]"
+}
 
-scan 0x00000040 %x maskSecondParam
-set secondParam [format %X [expr { ((($inputValue ^ $maskSecondParam) & $maskSecondParam) >> 6) }]]
-puts "Second parameter: $secondParam"
+proc convertHexToDec {hexValue} {
+    scan $hexValue %x decValue
+    return $decValue
+}
 
-scan 0x00010000 %x maskBit17
-scan 0x00020000 %x maskBit18
-scan 0x00040000 %x maskBit19
-scan 0x00080000 %x maskBit20
+proc getBitMask {numBit} {
+    return [expr {1 << ($numBit - 1)}]
+}
 
-set thirdParam 0
-set thirdParam [expr { (($inputValue & $maskBit20) >> 3) | $thirdParam }]
-set thirdParam [expr { (($inputValue & $maskBit19) >> 1) | $thirdParam }]
-set thirdParam [expr { (($inputValue & $maskBit18) << 1) | $thirdParam }]
-set thirdParam [expr { (($inputValue & $maskBit17) << 3) | $thirdParam }]
-set thirdParam [format %X [expr { $thirdParam >> 16 }]]
-puts "Third parameter: $thirdParam"
+proc getBitsMask {startPoint endPoint} {
+    set mask 0
+    for {set i $startPoint} {$i <= $endPoint} {incr i} {
+        set mask [expr {$mask | [getBitMask $i]}]
+    }
+    return $mask
+}
 
+proc reverseOrderBits {decValue startPoint endPoint} {
+    set newValue 0
+    for {set i 0} {$i < [expr {(abs($startPoint - $endPoint) + 1) / 2}]} {incr i} {
+        set curStartPoint [expr {$startPoint + $i}]
+        set curEndPoint [expr {$endPoint - $i}]
+        set distBetweenStartAndEnd [expr {abs($curStartPoint - $curEndPoint)}]
+        set newValue [expr {
+            (($decValue & [getBitMask $curStartPoint]) << $distBetweenStartAndEnd) | $newValue
+        }]
+        set newValue [expr {
+            (($decValue & [getBitMask $curEndPoint]) >> $distBetweenStartAndEnd) | $newValue
+        }]
+    }
+    return [expr {
+        ((~[getBitsMask $startPoint $endPoint]) & $decValue) | $newValue
+    }]  
+}
 
+proc flipBit {decValue numBit} {
+    set mask [getBitMask $numBit]
+    return [expr {
+        ($decValue ^ $mask) & $mask
+    }]
+}
+
+proc extractBits {decValue startPoint endPoint} {
+    return [expr {
+        ($decValue & [getBitsMask $startPoint $endPoint]) >> ($startPoint - 1)
+    }]
+}
+
+# Start process
+set inputValueDec [convertHexToDec $inputValue]
+
+set firstParam [extractBits $inputValueDec 9 16]
+printParamHex "First" $firstParam
+
+set secondParam [flipBit $inputValueDec 7]
+set secondParam [extractBits $secondParam 7 7]
+printParamHex "Second" $secondParam
+
+set thirdParam [reverseOrderBits $inputValueDec 17 20]
+set thirdParam [extractBits $thirdParam 17 20]
+printParamHex "Third" $thirdParam
